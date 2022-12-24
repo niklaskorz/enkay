@@ -1,0 +1,77 @@
+program = {
+    SOI
+    ~ stmt*
+    ~ EOI
+}
+
+stmt = _{ if_stmt | while_stmt | declaration_stmt | assignment_stmt | return_stmt | expr_stmt }
+
+if_stmt = { "if" ~ expr ~ "{" ~ stmt* ~ "}" ~ if_stmt_else? }
+if_stmt_else = { "else" ~ (if_stmt | ("{" ~ stmt* ~ "}")) }
+
+while_stmt = { "while" ~ expr ~ "{" ~ stmt* ~ "}" }
+
+decl_op = { ":=" }
+
+declaration_stmt = { ident ~ decl_op ~ expr ~ semicolon }
+assignment_stmt = { ident ~ "=" ~ expr ~ semicolon }
+return_stmt = { "return" ~ (expr)? ~ semicolon }
+expr_stmt = { (expr)? ~ semicolon }
+
+semicolon = { ";" }
+
+expr = { l_or }
+
+l_or = { l_and ~ ("||" ~ l_and )* }
+l_and = { comp ~ ("&&" ~ comp)* }
+comp = { term ~ (("==" | "!=" | ">=" | "<=" | ">" | "<") ~ term)? }
+term = { addend ~ (("+" | "-") ~ addend)* }
+addend = { factor ~ (("*" | "/") ~ factor)* }
+factor = { prefix_op* ~ value ~ suffix_op* }
+prefix_op = { "!" | "+" | "-" }
+suffix_op = { call | index }
+call = { "(" ~ (expr ~ ("," ~ expr)*)? ~ ")" }
+index = { "[" ~ expr ~ "]" }
+value = {
+    ("(" ~ expr ~ ")")
+    | if_expr
+    | function
+    | array
+    | ident
+    | decimal
+    | integer
+    | string
+    | boolean
+    | nil
+}
+
+if_expr = { "if" ~ expr ~ "{" ~ expr ~ "}" ~ if_expr_else? }
+if_expr_else = { "else" ~ (if_expr | ("{" ~ expr ~ "}")) }
+
+function = { "func" ~ "(" ~ (ident ~ ("," ~ ident)*)? ~ ")" ~ "{" ~ stmt* ~ "}" }
+
+array = { "[" ~ (expr ~ ("," ~ expr)*)? ~ "]" }
+
+integer = @{ ASCII_DIGIT+ }
+
+decimal = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT* }
+
+ident = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+
+string = ${ "\"" ~ inner ~ "\"" }
+inner = @{ char* }
+char = {
+    !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+    | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+boolean = { "true" | "false" }
+
+nil = { "nil" }
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+COMMENT = _{
+    ("/*" ~ (!"*/" ~ ANY)* ~ "*/")
+    | ("//" ~ (!NEWLINE ~ ANY)*)
+}

@@ -1,0 +1,116 @@
+add := func(a, b) {
+    return a + b;
+};
+
+mul := func(a) {
+    x := a;
+    return func(b) {
+        return x * b;
+    };
+};
+
+test := func(f) {
+    x := +42;
+    return f(x);
+};
+
+p := false;
+if !p {
+    println("p is false");
+}
+
+println(test(mul(-2)));
+
+println(add);
+println(add(50, 30));
+
+a := "Hello World";
+println(a);
+
+x := 5;
+y := 3;
+a = x;
+z := 9;
+if z >= x {
+    y := z - x;
+    a = 1;
+    a := 1;
+    a = a + 1;
+    println("y:", y);
+    println("a:", a);
+}
+println("a:", a);
+
+pi := if x < 3 {
+    3
+} else {
+    9
+};
+println("x:", x);
+println("pi:", pi);
+
+isCool := true;
+isLow := false;
+
+println("isCool:", isCool);
+if isCool {
+    println("It's cool!");
+} else {
+    println("It's not cool!");
+}
+if isLow {
+    println("It's low");
+} else {
+    println("It's not low");
+}
+
+faculty := func(n) {
+    if n == 0 {
+        return 1;
+    }
+    return n * faculty(n - 1);
+};
+
+println("9! =", faculty(9));
+
+println(func(x){return x*x;}(2));
+
+println(2 * 3 + 4 - 6 / (1 + 3));
+
+i := 0;
+while i < 5 {
+    i = i + 1;
+    if i == 2 {
+        continue;
+    }
+    println(i);
+}
+
+println(5/2);
+
+pow := func(t) {
+    src := "func(a) { return 1";
+    i := 0;
+    while i < t {
+        i = i + 1;
+        src = src + " * a";
+    }
+    src = src + "; }";
+    println(src);
+    return eval(src);
+};
+println("pow(6)(3):", pow(6)(3));
+
+anArray := [1, 2, 3, 4];
+println("anArray:", anArray);
+println("anArray[2]:", anArray[2]);
+println("anArray[-1]:", anArray[-1]);
+
+name := input("What's your name? ");
+println("So your name is", name);
+
+println(
+    "Test",
+    1,
+    2,
+);
