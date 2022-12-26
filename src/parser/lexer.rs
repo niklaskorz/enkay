@@ -27,6 +27,8 @@ pub enum Token {
     Greater,            // >
     Semicolon,          // ;
     Comma,              // ,
+    Colon,              // :
+    Arrow,              // ->
     LeftParen,          // (
     RightParen,         // )
     LeftBrace,          // {
@@ -68,6 +70,8 @@ impl std::fmt::Display for Token {
             Token::Greater => write!(f, ">"),
             Token::Semicolon => write!(f, ";"),
             Token::Comma => write!(f, ","),
+            Token::Colon => write!(f, ":"),
+            Token::Arrow => write!(f, "->"),
             Token::LeftParen => write!(f, "("),
             Token::RightParen => write!(f, ")"),
             Token::LeftBrace => write!(f, "{{"),
@@ -77,7 +81,7 @@ impl std::fmt::Display for Token {
             Token::Identifier(val) => write!(f, "{}", val),
             Token::Integer(val) => write!(f, "{}", val),
             Token::Decimal(val) => write!(f, "{}", val),
-            Token::String(val) => write!(f, "{}", val),
+            Token::String(val) => write!(f, "\"{}\"", val),
             Token::Boolean(val) => write!(f, "{}", val),
         }
     }
@@ -90,8 +94,8 @@ pub fn lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Simple<char>> {
     let block_comment = just("/*").then(take_until(just("*/"))).padded().to(());
     let comment = line_comment.or(block_comment);
     keyword()
-        .or(operator())
         .or(control_tokens())
+        .or(operator())
         .or(literal())
         .map_with_span(|tok, span| (tok, span))
         .padded_by(comment.repeated())
@@ -101,14 +105,14 @@ pub fn lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Simple<char>> {
 }
 
 fn keyword() -> impl Parser<char, Token, Error = Simple<char>> {
-    just("return")
+    text::keyword("return")
         .to(Token::Return)
-        .or(just("continue").to(Token::Continue))
-        .or(just("break").to(Token::Break))
-        .or(just("func").to(Token::Func))
-        .or(just("if").to(Token::If))
-        .or(just("else").to(Token::Else))
-        .or(just("while").to(Token::While))
+        .or(text::keyword("continue").to(Token::Continue))
+        .or(text::keyword("break").to(Token::Break))
+        .or(text::keyword("func").to(Token::Func))
+        .or(text::keyword("if").to(Token::If))
+        .or(text::keyword("else").to(Token::Else))
+        .or(text::keyword("while").to(Token::While))
 }
 
 fn operator() -> impl Parser<char, Token, Error = Simple<char>> {
@@ -134,6 +138,8 @@ fn control_tokens() -> impl Parser<char, Token, Error = Simple<char>> {
     just(";")
         .to(Token::Semicolon)
         .or(just(",").to(Token::Comma))
+        .or(just(":").to(Token::Colon))
+        .or(just("->").to(Token::Arrow))
         .or(just("(").to(Token::LeftParen))
         .or(just(")").to(Token::RightParen))
         .or(just("{").to(Token::LeftBrace))
@@ -178,11 +184,11 @@ fn literal() -> impl Parser<char, Token, Error = Simple<char>> {
         .collect::<String>()
         .map(Token::Decimal);
     let integer = text::int(10).map(Token::Integer);
-    let boolean = just("true")
+    let boolean = text::keyword("true")
         .to(true)
-        .or(just("false").to(false))
+        .or(text::keyword("false").to(false))
         .map(Token::Boolean);
-    let nil = just("nil").to(Token::Nil);
+    let nil = text::keyword("nil").to(Token::Nil);
     let ident = text::ident().map(Token::Identifier);
     string.or(decimal).or(integer).or(boolean).or(nil).or(ident)
 }

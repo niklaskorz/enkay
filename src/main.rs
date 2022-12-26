@@ -1,26 +1,34 @@
 mod parser;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use parser::Expr;
+use wasm_encoder::Function;
+
+use crate::parser::{Statement, Token};
 
 fn main() -> Result<()> {
-    parser::main();
-
-    wasm_example()?;
+    let src = std::fs::read_to_string(std::env::args().nth(1).expect("Expected file argument"))
+        .expect("Failed to read file");
+    let (ast, errors) = parser::parse(&src);
+    if let Some(ast) = ast {
+        let binary = compile(ast)?;
+        execute_wasm(binary)?;
+    } else {
+        parser::print_error_report(&src, errors);
+    }
 
     Ok(())
 }
 
-fn wasm_example() -> Result<()> {
-    use wasmtime::{Engine, Instance, Module, Store};
-
-    let binary = compile();
+fn execute_wasm(binary: Vec<u8>) -> Result<()> {
+    use wasmtime::{Engine, Instance, Linker, Module, Store};
 
     // An engine stores and configures global compilation settings like
     // optimization level, enabled wasm features, etc.
     let engine = Engine::default();
 
     // Define the WASI functions globally on the `Config`.
-    //let mut linker = Linker::new(&engine);
+    let mut linker = Linker::new(&engine);
     //wasmtime_wasi::add_to_linker(&mut linker, |s| s)?;
 
     // We start off by creating a `Module` which represents a compiled form
@@ -42,11 +50,12 @@ fn wasm_example() -> Result<()> {
     // now we just use `()`.
     let mut store = Store::new(&engine, ());
 
-    /*linker.module(&mut store, "", &module)?;
-    linker
+    linker.module(&mut store, "", &module)?;
+    let result = linker
         .get_default(&mut store, "")?
-        .typed::<(), (), &Store<WasiCtx>>(&store)?
-        .call(&mut store, ())?;*/
+        .typed::<(), i64>(&store)?
+        .call(&mut store, ())?;
+    println!("Result: {:?}", result);
 
     // With a compiled `Module` we can then instantiate it, creating
     // an `Instance` which we can actually poke at functions on.
@@ -62,7 +71,7 @@ fn wasm_example() -> Result<()> {
     // There's a few ways we can call the `answer` `Func` value. The easiest
     // is to statically assert its signature with `typed` (in this case
     // asserting it takes no arguments and returns one i32) and then call it.
-    let answer = answer.typed::<(i32, i32), i32>(&store)?;
+    let answer = answer.typed::<(i64, i64), i64>(&store)?;
 
     // And finally we can call our function! Note that the error propagation
     // with `?` is done to handle the case where the wasm function traps.
@@ -72,38 +81,53 @@ fn wasm_example() -> Result<()> {
     Ok(())
 }
 
-fn compile() -> Vec<u8> {
+fn compile(ast: Vec<parser::Statement>) -> Result<Vec<u8>> {
     use wasm_encoder::{
-        CodeSection, ExportKind, ExportSection, Function, FunctionSection, Instruction, Module,
-        TypeSection, ValType,
+        CodeSection, ExportKind, ExportSection, FunctionSection, Instruction, Module, TypeSection,
     };
 
-    // Encode the type section.
     let mut types = TypeSection::new();
-    let params = vec![ValType::I32, ValType::I32];
-    let results = vec![ValType::I32];
-    types.function(params, results);
-
-    // Encode the function section.
     let mut functions = FunctionSection::new();
-    let type_index = 0;
-    functions.function(type_index);
-
-    // Encode the export section.
     let mut exports = ExportSection::new();
-    exports.export("answer", ExportKind::Func, 0);
-
-    // Encode the code section.
     let mut codes = CodeSection::new();
-    let locals = vec![];
-    let mut f = Function::new(locals);
-    f.instruction(&Instruction::I32Const(4));
-    f.instruction(&Instruction::LocalGet(0));
-    f.instruction(&Instruction::LocalGet(1));
-    f.instruction(&Instruction::I32Add);
-    f.instruction(&Instruction::I32Mul);
-    f.instruction(&Instruction::End);
-    codes.function(&f);
+
+    let mut type_index = 0;
+    for statement in ast {
+        match statement {
+            Statement::FunctionDeclaration {
+                name,
+                params,
+                return_type,
+                body,
+            } => {
+                let param_types: Vec<_> = params.iter().map(|p| map_type(&p.1).unwrap()).collect();
+                let results = vec![map_type(&return_type)?];
+                types.function(param_types, results);
+                functions.function(type_index);
+                exports.export(&name, ExportKind::Func, type_index);
+
+                let locals = vec![];
+                let mut f = Function::new(locals);
+                let locals: Vec<_> = params.into_iter().map(|p| p.0).collect();
+                for statement in body {
+                    match statement {
+                        Statement::Return(expr) => {
+                            if let Some(expr) = expr {
+                                compile_expression(&mut f, &locals, &expr);
+                            }
+                            f.instruction(&Instruction::Return);
+                        }
+                        _ => {}
+                    }
+                }
+                f.instruction(&Instruction::End);
+                codes.function(&f);
+
+                type_index += 1;
+            }
+            _ => {}
+        }
+    }
 
     let mut module = Module::new();
     module
@@ -112,8 +136,73 @@ fn compile() -> Vec<u8> {
         .section(&exports)
         .section(&codes);
 
-    // Extract the encoded Wasm bytes for this module.
-    let wasm_bytes = module.finish();
+    Ok(module.finish())
+}
 
-    wasm_bytes
+fn compile_expression(f: &mut Function, locals: &Vec<String>, expr: &Expr) {
+    use wasm_encoder::Instruction;
+    match expr {
+        Expr::Ident(name) => {
+            f.instruction(&Instruction::LocalGet(
+                locals
+                    .iter()
+                    .position(|l| l == name)
+                    .unwrap()
+                    .try_into()
+                    .unwrap(),
+            ));
+        }
+        &Expr::Decimal(val) => {
+            f.instruction(&Instruction::F64Const(val));
+        }
+        &Expr::Integer(val) => {
+            f.instruction(&Instruction::I64Const(val));
+        }
+        Expr::BinaryOp(lhs, op, rhs) => {
+            compile_expression(f, locals, lhs);
+            compile_expression(f, locals, rhs);
+            match op {
+                Token::Multiply => {
+                    f.instruction(&Instruction::I64Mul);
+                }
+                Token::Divide => {
+                    f.instruction(&Instruction::I64DivS);
+                }
+                Token::Plus => {
+                    f.instruction(&Instruction::I64Add);
+                }
+                Token::Minus => {
+                    f.instruction(&Instruction::I64Sub);
+                }
+                _ => {
+                    f.instruction(&Instruction::Unreachable);
+                }
+            }
+        }
+        Expr::PrefixOp(op, rhs) => match op {
+            Token::Minus => {
+                f.instruction(&Instruction::I64Const(0));
+                compile_expression(f, locals, rhs);
+                f.instruction(&Instruction::I64Sub);
+            }
+            Token::Plus => {
+                compile_expression(f, locals, rhs);
+            }
+            _ => {
+                f.instruction(&Instruction::Unreachable);
+            }
+        },
+        _ => {
+            f.instruction(&Instruction::Unreachable);
+        }
+    }
+}
+
+fn map_type(type_name: &str) -> Result<wasm_encoder::ValType> {
+    use wasm_encoder::ValType;
+    match type_name {
+        "i64" => Ok(ValType::I64),
+        "i32" => Ok(ValType::I32),
+        _ => Err(anyhow!("unknown type {}", type_name)),
+    }
 }

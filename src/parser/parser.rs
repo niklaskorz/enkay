@@ -7,6 +7,12 @@ pub enum Statement {
     Block(Vec<Statement>),
     If(Expr, Vec<Statement>, Option<Box<Statement>>),
     While(Expr, Vec<Statement>),
+    FunctionDeclaration {
+        name: String,
+        params: Vec<(String, String)>,
+        return_type: String,
+        body: Vec<Statement>,
+    },
     Declaration(String, Expr),
     Assignment(String, Expr),
     Return(Option<Expr>),
@@ -48,6 +54,32 @@ pub fn parser() -> impl Parser<Token, Vec<Statement>, Error = Simple<Token>> {
             )
             .map(|(condition, statements)| Statement::While(condition, statements));
 
+        let function_declaration_stmt = just(Token::Func)
+            .ignore_then(ident)
+            .then(
+                ident
+                    .then_ignore(just(Token::Colon))
+                    .then(ident)
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
+            )
+            .then_ignore(just(Token::Arrow))
+            .then(ident)
+            .then(
+                stmt.clone()
+                    .repeated()
+                    .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
+            )
+            .map(
+                |(((name, params), return_type), body)| Statement::FunctionDeclaration {
+                    name,
+                    params,
+                    return_type,
+                    body,
+                },
+            );
+
         let declaration_stmt = ident
             .then_ignore(just(Token::Declare))
             .then(expr.clone())
@@ -76,6 +108,7 @@ pub fn parser() -> impl Parser<Token, Vec<Statement>, Error = Simple<Token>> {
 
         if_stmt
             .or(while_stmt)
+            .or(function_declaration_stmt)
             .or(declaration_stmt)
             .or(assignment_stmt)
             .or(return_stmt)
@@ -175,9 +208,7 @@ fn expr(
             .or(nil)
             .or(expr_ident);
 
-        let prefix_op = just(Token::LogicalNot)
-            .or(just(Token::Plus))
-            .or(just(Token::Minus));
+        let prefix_op = one_of(&[Token::LogicalNot, Token::Plus, Token::Minus]);
 
         let call = expr
             .clone()
@@ -202,32 +233,28 @@ fn expr(
         let addend = factor
             .clone()
             .then(
-                just(Token::Multiply)
-                    .or(just(Token::Divide))
+                one_of(&[Token::Multiply, Token::Divide])
                     .then(factor)
                     .repeated(),
             )
             .foldl(|lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)));
         let term = addend
             .clone()
-            .then(
-                just(Token::Plus)
-                    .or(just(Token::Minus))
-                    .then(addend)
-                    .repeated(),
-            )
+            .then(one_of(&[Token::Plus, Token::Minus]).then(addend).repeated())
             .foldl(|lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)));
         let comp = term
             .clone()
             .then(
-                just(Token::Equal)
-                    .or(just(Token::NotEqual))
-                    .or(just(Token::GreaterOrEqual))
-                    .or(just(Token::LessOrEqual))
-                    .or(just(Token::Greater))
-                    .or(just(Token::Less))
-                    .then(term)
-                    .repeated(),
+                one_of(&[
+                    Token::Equal,
+                    Token::NotEqual,
+                    Token::GreaterOrEqual,
+                    Token::LessOrEqual,
+                    Token::Greater,
+                    Token::Less,
+                ])
+                .then(term)
+                .repeated(),
             )
             .foldl(|lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)));
         let l_and = comp
