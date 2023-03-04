@@ -3,13 +3,19 @@ use chumsky::prelude::*;
 use super::lexer::Token;
 
 #[derive(Clone, Debug)]
+pub struct Param {
+    pub name: String,
+    pub data_type: String,
+}
+
+#[derive(Clone, Debug)]
 pub enum Statement {
     Block(Vec<Statement>),
     If(Expr, Vec<Statement>, Option<Box<Statement>>),
     While(Expr, Vec<Statement>),
     FunctionDeclaration {
         name: String,
-        params: Vec<(String, String)>,
+        params: Vec<Param>,
         return_type: String,
         body: Vec<Statement>,
     },
@@ -21,7 +27,8 @@ pub enum Statement {
     Expr(Expr),
 }
 
-pub fn parser() -> impl Parser<Token, Vec<Statement>, Error = Simple<Token>> {
+pub fn parser<'a>(
+) -> impl Parser<'a, &'a [Token], Vec<Statement>, extra::Err<Rich<'a, &'a [Token]>>> {
     let ident = select! { Token::Identifier(value) => value.clone() };
     let stmt = recursive(|stmt| {
         let expr = expr(stmt.clone());
@@ -30,6 +37,7 @@ pub fn parser() -> impl Parser<Token, Vec<Statement>, Error = Simple<Token>> {
                 if_stmt.or(stmt
                     .clone()
                     .repeated()
+                    .collect::<Vec<_>>()
                     .delimited_by(just(Token::LeftBrace), just(Token::RightBrace))
                     .map(Statement::Block)),
             );
@@ -38,6 +46,7 @@ pub fn parser() -> impl Parser<Token, Vec<Statement>, Error = Simple<Token>> {
                 .then(
                     stmt.clone()
                         .repeated()
+                        .collect::<Vec<_>>()
                         .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
                 )
                 .then(else_branch.or_not())
@@ -50,6 +59,7 @@ pub fn parser() -> impl Parser<Token, Vec<Statement>, Error = Simple<Token>> {
             .then(
                 stmt.clone()
                     .repeated()
+                    .collect::<Vec<_>>()
                     .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
             )
             .map(|(condition, statements)| Statement::While(condition, statements));
@@ -62,6 +72,7 @@ pub fn parser() -> impl Parser<Token, Vec<Statement>, Error = Simple<Token>> {
                     .then(ident)
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
+                    .collect::<Vec<_>>()
                     .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
             )
             .then_ignore(just(Token::Arrow))
@@ -69,12 +80,16 @@ pub fn parser() -> impl Parser<Token, Vec<Statement>, Error = Simple<Token>> {
             .then(
                 stmt.clone()
                     .repeated()
+                    .collect::<Vec<_>>()
                     .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
             )
             .map(
                 |(((name, params), return_type), body)| Statement::FunctionDeclaration {
                     name,
-                    params,
+                    params: params
+                        .into_iter()
+                        .map(|(name, data_type)| Param { name, data_type })
+                        .collect(),
                     return_type,
                     body,
                 },
@@ -117,8 +132,7 @@ pub fn parser() -> impl Parser<Token, Vec<Statement>, Error = Simple<Token>> {
             .or(expr_stmt)
     });
 
-    let program = stmt.repeated();
-    program.then_ignore(end())
+    stmt.repeated().collect::<Vec<_>>().then_ignore(end())
 }
 
 #[derive(Clone, Debug)]
@@ -143,9 +157,9 @@ pub enum Expr {
     BinaryOp(Box<Expr>, Token, Box<Expr>),
 }
 
-fn expr(
-    stmt: impl Parser<Token, Statement, Error = Simple<Token>> + Clone + 'static,
-) -> impl Parser<Token, Expr, Error = Simple<Token>> + Clone {
+fn expr<'a>(
+    stmt: impl Parser<'a, &'a [Token], Statement, extra::Err<Rich<'a, &'a [Token]>>> + Clone + 'a,
+) -> impl Parser<'a, &'a [Token], Expr, extra::Err<Rich<'a, &'a [Token]>>> + Clone {
     let string = select! { Token::String(value) => value.clone() }.map(Expr::String);
     let decimal = select! { Token::Decimal(value) => value.parse() }
         .unwrapped()
@@ -166,6 +180,7 @@ fn expr(
             .clone()
             .separated_by(just(Token::Comma))
             .allow_trailing()
+            .collect::<Vec<_>>()
             .delimited_by(just(Token::LeftBracket), just(Token::RightBracket))
             .map(|entries| Expr::Array(entries));
         let if_expr = recursive(|if_expr| {
@@ -190,10 +205,12 @@ fn expr(
                 ident
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
+                    .collect::<Vec<_>>()
                     .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
             )
             .then(
                 stmt.repeated()
+                    .collect::<Vec<_>>()
                     .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
             )
             .map(|(params, statements)| Expr::Function(params, statements));
@@ -214,6 +231,7 @@ fn expr(
             .clone()
             .separated_by(just(Token::Comma))
             .allow_trailing()
+            .collect::<Vec<_>>()
             .delimited_by(just(Token::LeftParen), just(Token::RightParen))
             .map(|params| SuffixOp::Call(params));
         let index = expr
@@ -222,49 +240,43 @@ fn expr(
             .map(|val| SuffixOp::Index(Box::new(val)));
         let suffix_op = call.or(index);
 
-        let factor = prefix_op
-            .repeated()
-            .then(
-                value
-                    .then(suffix_op.repeated())
-                    .foldl(|lhs, rhs| Expr::SuffixOp(Box::new(lhs), rhs)),
-            )
-            .foldr(|lhs, rhs| Expr::PrefixOp(lhs, Box::new(rhs)));
-        let addend = factor
-            .clone()
-            .then(
-                one_of(&[Token::Multiply, Token::Divide])
-                    .then(factor)
-                    .repeated(),
-            )
-            .foldl(|lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)));
-        let term = addend
-            .clone()
-            .then(one_of(&[Token::Plus, Token::Minus]).then(addend).repeated())
-            .foldl(|lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)));
-        let comp = term
-            .clone()
-            .then(
-                one_of(&[
-                    Token::Equal,
-                    Token::NotEqual,
-                    Token::GreaterOrEqual,
-                    Token::LessOrEqual,
-                    Token::Greater,
-                    Token::Less,
-                ])
-                .then(term)
+        let factor = prefix_op.repeated().foldr(
+            value.foldl(suffix_op.repeated(), |lhs, rhs| {
+                Expr::SuffixOp(Box::new(lhs), rhs)
+            }),
+            |lhs, rhs| Expr::PrefixOp(lhs, Box::new(rhs)),
+        );
+        let addend = factor.clone().foldl(
+            one_of(&[Token::Multiply, Token::Divide])
+                .then(factor)
                 .repeated(),
-            )
-            .foldl(|lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)));
-        let l_and = comp
-            .clone()
-            .then(just(Token::LogicalAnd).then(comp).repeated())
-            .foldl(|lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)));
-        let l_or = l_and
-            .clone()
-            .then(just(Token::LogicalOr).then(l_and).repeated())
-            .foldl(|lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)));
+            |lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)),
+        );
+        let term = addend.clone().foldl(
+            one_of(&[Token::Plus, Token::Minus]).then(addend).repeated(),
+            |lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)),
+        );
+        let comp = term.clone().foldl(
+            one_of(&[
+                Token::Equal,
+                Token::NotEqual,
+                Token::GreaterOrEqual,
+                Token::LessOrEqual,
+                Token::Greater,
+                Token::Less,
+            ])
+            .then(term)
+            .repeated(),
+            |lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)),
+        );
+        let l_and = comp.clone().foldl(
+            just(Token::LogicalAnd).then(comp).repeated(),
+            |lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)),
+        );
+        let l_or = l_and.clone().foldl(
+            just(Token::LogicalOr).then(l_and).repeated(),
+            |lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)),
+        );
 
         l_or
     })

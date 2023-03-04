@@ -2,36 +2,38 @@ mod lexer;
 mod parser;
 
 use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
-use chumsky::{prelude::Simple, Parser, Stream};
+use chumsky::{input::Stream, Parser};
 
 pub use self::lexer::Token;
 pub use self::parser::{Expr, Statement};
 
-pub fn parse(src: &str) -> (Option<Vec<Statement>>, impl Iterator<Item = Simple<String>>) {
-    let (tokens, lex_errs) = lexer::lexer().parse_recovery(src);
+pub fn parse(src: &str) -> Option<Vec<Statement>> {
+    let (tokens, lex_errs) = lexer::lexer().parse(src).into_output_errors();
+    for err in lex_errs {
+        println!("{}", err);
+    }
 
-    let (ast, parse_errs) = if let Some(tokens) = tokens {
+    let ast = if let Some(tokens) = tokens {
         let len = src.chars().count();
-        let (ast, parse_errs) =
-            parser::parser().parse_recovery(Stream::from_iter(len..len + 1, tokens.into_iter()));
-        (ast, parse_errs)
+        let (ast, parse_errs) = parser::parser().parse(&tokens).into_output_errors();
+        for err in parse_errs {
+            println!("{}", err);
+        }
+        ast
     } else {
-        (None, Vec::new())
+        None
     };
 
-    let errors = lex_errs
+    /*let errors = lex_errs
         .into_iter()
         .map(|e| e.map(|c| c.to_string()))
         .chain(parse_errs.into_iter().map(|e| e.map(|tok| tok.to_string())));
-    (ast, errors)
-}
 
-pub fn print_error_report<T: Iterator<Item = Simple<String>>>(src: &str, errors: T) {
     errors.for_each(|e| {
         let report = Report::build(ReportKind::Error, (), e.span().start);
 
         let report = match e.reason() {
-            chumsky::error::SimpleReason::Unclosed { span, delimiter } => report
+            chumsky::error::RichReason::Unclosed { span, delimiter } => report
                 .with_message(format!(
                     "Unclosed delimiter {}",
                     delimiter.fg(Color::Yellow)
@@ -54,7 +56,7 @@ pub fn print_error_report<T: Iterator<Item = Simple<String>>>(src: &str, errors:
                         ))
                         .with_color(Color::Red),
                 ),
-            chumsky::error::SimpleReason::Unexpected => report
+            chumsky::error::RichReason::ExpectedFound { expected, found } => report
                 .with_message(format!(
                     "{}, expected {}",
                     if e.found().is_some() {
@@ -84,7 +86,7 @@ pub fn print_error_report<T: Iterator<Item = Simple<String>>>(src: &str, errors:
                         ))
                         .with_color(Color::Red),
                 ),
-            chumsky::error::SimpleReason::Custom(msg) => report.with_message(msg).with_label(
+            chumsky::error::RichReason::Custom(msg) => report.with_message(msg).with_label(
                 Label::new(e.span())
                     .with_message(format!("{}", msg.fg(Color::Red)))
                     .with_color(Color::Red),
@@ -92,5 +94,7 @@ pub fn print_error_report<T: Iterator<Item = Simple<String>>>(src: &str, errors:
         };
 
         report.finish().print(Source::from(&src)).unwrap();
-    });
+    });*/
+
+    ast
 }

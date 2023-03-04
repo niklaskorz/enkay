@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 ariadne = "0.1"
-chumsky = { git = "https://github.com/zesterer/chumsky.git", rev = "a2922b14f67f8e7f4fda64df0040492513c5a0b5" }
+chumsky = "1.0.0-alpha.0"
 thiserror = "1"
 wasm-encoder = "0.20"
 wasmtime = "4.0"

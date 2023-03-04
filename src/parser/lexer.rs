@@ -1,4 +1,4 @@
-use chumsky::{prelude::*, text::newline};
+use chumsky::{prelude::*, recovery::skip_until, text::newline};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Token {
@@ -89,22 +89,23 @@ impl std::fmt::Display for Token {
 
 pub type Span = std::ops::Range<usize>;
 
-pub fn lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Simple<char>> {
-    let line_comment = just("//").then(take_until(newline())).padded().to(());
-    let block_comment = just("/*").then(take_until(just("*/"))).padded().to(());
+pub fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Token>, extra::Err<Rich<'a, &'a str>>> {
+    let line_comment = just("//").then(skip_until(newline())).padded().to(());
+    let block_comment = just("/*").then(skip_until(just("*/"))).padded().to(());
     let comment = line_comment.or(block_comment);
     keyword()
         .or(control_tokens())
         .or(operator())
         .or(literal())
-        .map_with_span(|tok, span| (tok, span))
+        //.map_with_span(|tok, span| (tok, span))
         .padded_by(comment.repeated())
         .padded()
         .repeated()
+        .collect::<Vec<_>>()
         .then_ignore(end())
 }
 
-fn keyword() -> impl Parser<char, Token, Error = Simple<char>> {
+fn keyword<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
     text::keyword("return")
         .to(Token::Return)
         .or(text::keyword("continue").to(Token::Continue))
@@ -115,7 +116,7 @@ fn keyword() -> impl Parser<char, Token, Error = Simple<char>> {
         .or(text::keyword("while").to(Token::While))
 }
 
-fn operator() -> impl Parser<char, Token, Error = Simple<char>> {
+fn operator<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
     just(":=")
         .to(Token::Declare)
         .or(just("==").to(Token::Equal))
@@ -134,7 +135,7 @@ fn operator() -> impl Parser<char, Token, Error = Simple<char>> {
         .or(just('!').to(Token::LogicalNot))
 }
 
-fn control_tokens() -> impl Parser<char, Token, Error = Simple<char>> {
+fn control_tokens<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
     just(";")
         .to(Token::Semicolon)
         .or(just(",").to(Token::Comma))
@@ -148,47 +149,49 @@ fn control_tokens() -> impl Parser<char, Token, Error = Simple<char>> {
         .or(just("]").to(Token::RightBracket))
 }
 
-fn literal() -> impl Parser<char, Token, Error = Simple<char>> {
-    let escape = just('\\').ignore_then(
-        just('\\')
-            .or(just('/'))
-            .or(just('"'))
-            .or(just('b').to('\x08'))
-            .or(just('f').to('\x0C'))
-            .or(just('n').to('\n'))
-            .or(just('r').to('\r'))
-            .or(just('t').to('\t'))
-            .or(just('u').ignore_then(
-                filter(|c: &char| c.is_digit(16))
-                    .repeated()
-                    .exactly(4)
-                    .collect::<String>()
-                    .validate(|digits, span, emit| {
-                        char::from_u32(u32::from_str_radix(&digits, 16).unwrap()).unwrap_or_else(
-                            || {
-                                emit(Simple::custom(span, "invalid unicode character"));
-                                '\u{FFFD}' // unicode replacement character
-                            },
-                        )
-                    }),
+fn literal<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
+    let escape = just('\\')
+        .then(choice((
+            just('\\'),
+            just('/'),
+            just('"'),
+            just('b').to('\x08'),
+            just('f').to('\x0C'),
+            just('n').to('\n'),
+            just('r').to('\r'),
+            just('t').to('\t'),
+            just('u').ignore_then(text::digits(16).exactly(4).slice().validate(
+                |digits, span, emitter| {
+                    char::from_u32(u32::from_str_radix(digits, 16).unwrap()).unwrap_or_else(|| {
+                        emitter.emit(Rich::custom(span, "invalid unicode character"));
+                        '\u{FFFD}' // unicode replacement character
+                    })
+                },
             )),
-    );
-    let string = just('"')
-        .ignore_then(filter(|c| *c != '\\' && *c != '"').or(escape).repeated())
-        .then_ignore(just('"'))
-        .collect::<String>()
+        )))
+        .ignored()
+        .boxed();
+    let string = none_of("\\\"")
+        .ignored()
+        .or(escape)
+        .repeated()
+        .slice()
+        .map(ToString::to_string)
+        .delimited_by(just('"'), just('"'))
         .map(Token::String);
     let decimal = text::int(10)
-        .chain::<char, _, _>(just('.'))
-        .chain::<char, _, _>(text::digits(10))
-        .collect::<String>()
+        .then(just('.'))
+        .then(text::digits(10).slice())
+        .map_slice(ToString::to_string)
         .map(Token::Decimal);
-    let integer = text::int(10).map(Token::Integer);
+    let integer = text::int(10).map(ToString::to_string).map(Token::Integer);
     let boolean = text::keyword("true")
         .to(true)
         .or(text::keyword("false").to(false))
         .map(Token::Boolean);
     let nil = text::keyword("nil").to(Token::Nil);
-    let ident = text::ident().map(Token::Identifier);
+    let ident = text::ident()
+        .map(ToString::to_string)
+        .map(Token::Identifier);
     string.or(decimal).or(integer).or(boolean).or(nil).or(ident)
 }

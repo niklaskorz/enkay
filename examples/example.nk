@@ -1,18 +1,18 @@
-add := func(a, b) {
+func add(a, b) {
     return a + b;
-};
+}
 
-mul := func(a) {
+func mul(a) {
     x := a;
     return func(b) {
         return x * b;
     };
-};
+}
 
-test := func(f) {
+func test(f) {
     x := +42;
     return f(x);
-};
+}
 
 p := false;
 if !p {

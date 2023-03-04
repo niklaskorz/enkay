@@ -9,12 +9,10 @@ use crate::parser::{Statement, Token};
 fn main() -> Result<()> {
     let src = std::fs::read_to_string(std::env::args().nth(1).expect("Expected file argument"))
         .expect("Failed to read file");
-    let (ast, errors) = parser::parse(&src);
+    let ast = parser::parse(&src);
     if let Some(ast) = ast {
         let binary = compile(ast)?;
         execute_wasm(binary)?;
-    } else {
-        parser::print_error_report(&src, errors);
     }
 
     Ok(())
@@ -100,7 +98,10 @@ fn compile(ast: Vec<parser::Statement>) -> Result<Vec<u8>> {
                 return_type,
                 body,
             } => {
-                let param_types: Vec<_> = params.iter().map(|p| map_type(&p.1).unwrap()).collect();
+                let param_types: Vec<_> = params
+                    .iter()
+                    .map(|p| map_type(&p.data_type).unwrap())
+                    .collect();
                 let results = vec![map_type(&return_type)?];
                 types.function(param_types, results);
                 functions.function(type_index);
@@ -108,7 +109,7 @@ fn compile(ast: Vec<parser::Statement>) -> Result<Vec<u8>> {
 
                 let locals = vec![];
                 let mut f = Function::new(locals);
-                let locals: Vec<_> = params.into_iter().map(|p| p.0).collect();
+                let locals: Vec<_> = params.into_iter().map(|p| p.name).collect();
                 for statement in body {
                     match statement {
                         Statement::Return(expr) => {
