@@ -1,4 +1,4 @@
-use chumsky::{prelude::*, recovery::skip_until, text::newline};
+use chumsky::{input::StrInput, prelude::*, recovery::skip_until, text::newline};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Token {
@@ -89,15 +89,17 @@ impl std::fmt::Display for Token {
 
 pub type Span = std::ops::Range<usize>;
 
-type LexerInput<'a> = &'a str;
-type LexerError<'a> = extra::Err<Rich<'a, LexerInput<'a>>>;
+type LexerError<'a, I> = extra::Err<Rich<'a, I>>;
 
-pub fn lexer<'a>() -> impl Parser<'a, LexerInput<'a>, Vec<(Token, Span)>, LexerError<'a>> {
+pub fn lexer<'a, I>() -> impl Parser<'a, I, Vec<(Token, Span)>, LexerError<'a, I>>
+where
+    I: StrInput<'a, char, Span = SimpleSpan<usize>>,
+{
     let line_comment = just("//").then(skip_until(newline())).padded().to(());
     let block_comment = just("/*").then(skip_until(just("*/"))).padded().to(());
     let comment = line_comment.or(block_comment);
     choice((keyword(), control_tokens(), operator(), literal()))
-        .map_with_span(|tok, span| (tok, span.into()))
+        .map_with_span(|tok, span: I::Span| (tok, span.into()))
         .padded_by(comment.repeated())
         .padded()
         .repeated()
@@ -106,7 +108,10 @@ pub fn lexer<'a>() -> impl Parser<'a, LexerInput<'a>, Vec<(Token, Span)>, LexerE
         .boxed()
 }
 
-fn keyword<'a>() -> impl Parser<'a, LexerInput<'a>, Token, LexerError<'a>> {
+fn keyword<'a, I>() -> impl Parser<'a, I, Token, LexerError<'a, I>>
+where
+    I: StrInput<'a, char>,
+{
     choice((
         text::keyword("return").to(Token::Return),
         text::keyword("continue").to(Token::Continue),
@@ -119,7 +124,10 @@ fn keyword<'a>() -> impl Parser<'a, LexerInput<'a>, Token, LexerError<'a>> {
     .boxed()
 }
 
-fn operator<'a>() -> impl Parser<'a, LexerInput<'a>, Token, LexerError<'a>> {
+fn operator<'a, I>() -> impl Parser<'a, I, Token, LexerError<'a, I>>
+where
+    I: StrInput<'a, char>,
+{
     choice((
         just(":=").to(Token::Declare),
         just("==").to(Token::Equal),
@@ -140,7 +148,10 @@ fn operator<'a>() -> impl Parser<'a, LexerInput<'a>, Token, LexerError<'a>> {
     .boxed()
 }
 
-fn control_tokens<'a>() -> impl Parser<'a, LexerInput<'a>, Token, LexerError<'a>> {
+fn control_tokens<'a, I>() -> impl Parser<'a, I, Token, LexerError<'a, I>>
+where
+    I: StrInput<'a, char>,
+{
     choice((
         just(";").to(Token::Semicolon),
         just(",").to(Token::Comma),
@@ -156,7 +167,10 @@ fn control_tokens<'a>() -> impl Parser<'a, LexerInput<'a>, Token, LexerError<'a>
     .boxed()
 }
 
-fn literal<'a>() -> impl Parser<'a, LexerInput<'a>, Token, LexerError<'a>> {
+fn literal<'a, I>() -> impl Parser<'a, I, Token, LexerError<'a, I>>
+where
+    I: StrInput<'a, char>,
+{
     let escape = just('\\')
         .then(choice((
             just('\\'),
