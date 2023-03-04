@@ -89,12 +89,15 @@ impl std::fmt::Display for Token {
 
 pub type Span = std::ops::Range<usize>;
 
-pub fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Token>, extra::Err<Rich<'a, &'a str>>> {
+type LexerInput<'a> = &'a str;
+type LexerError<'a> = extra::Err<Rich<'a, LexerInput<'a>>>;
+
+pub fn lexer<'a>() -> impl Parser<'a, LexerInput<'a>, Vec<(Token, Span)>, LexerError<'a>> {
     let line_comment = just("//").then(skip_until(newline())).padded().to(());
     let block_comment = just("/*").then(skip_until(just("*/"))).padded().to(());
     let comment = line_comment.or(block_comment);
     choice((keyword(), control_tokens(), operator(), literal()))
-        //.map_with_span(|tok, span| (tok, span))
+        .map_with_span(|tok, span| (tok, span.into()))
         .padded_by(comment.repeated())
         .padded()
         .repeated()
@@ -103,7 +106,7 @@ pub fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Token>, extra::Err<Rich<'a, &
         .boxed()
 }
 
-fn keyword<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
+fn keyword<'a>() -> impl Parser<'a, LexerInput<'a>, Token, LexerError<'a>> {
     choice((
         text::keyword("return").to(Token::Return),
         text::keyword("continue").to(Token::Continue),
@@ -116,7 +119,7 @@ fn keyword<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>
     .boxed()
 }
 
-fn operator<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
+fn operator<'a>() -> impl Parser<'a, LexerInput<'a>, Token, LexerError<'a>> {
     choice((
         just(":=").to(Token::Declare),
         just("==").to(Token::Equal),
@@ -137,7 +140,7 @@ fn operator<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str
     .boxed()
 }
 
-fn control_tokens<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
+fn control_tokens<'a>() -> impl Parser<'a, LexerInput<'a>, Token, LexerError<'a>> {
     choice((
         just(";").to(Token::Semicolon),
         just(",").to(Token::Comma),
@@ -153,7 +156,7 @@ fn control_tokens<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &
     .boxed()
 }
 
-fn literal<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
+fn literal<'a>() -> impl Parser<'a, LexerInput<'a>, Token, LexerError<'a>> {
     let escape = just('\\')
         .then(choice((
             just('\\'),

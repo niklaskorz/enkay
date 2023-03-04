@@ -1,4 +1,9 @@
-use chumsky::prelude::*;
+use std::vec::IntoIter;
+
+use chumsky::{
+    input::{Spanned, Stream},
+    prelude::*,
+};
 
 use super::lexer::Token;
 
@@ -27,8 +32,11 @@ pub enum Statement {
     Expr(Expr),
 }
 
-pub fn parser<'a>(
-) -> impl Parser<'a, &'a [Token], Vec<Statement>, extra::Err<Rich<'a, &'a [Token]>>> {
+type Span = std::ops::Range<usize>;
+type TokenStream = Spanned<Token, Span, Stream<IntoIter<(Token, Span)>>>;
+type TokenError<'a> = extra::Err<Rich<'a, TokenStream>>;
+
+pub fn parser<'a>() -> impl Parser<'a, TokenStream, Vec<Statement>, TokenError<'a>> {
     let ident = select! { Token::Identifier(value) => value.clone() };
     let stmt = recursive(|stmt| {
         let expr = expr(stmt.clone());
@@ -166,8 +174,8 @@ pub enum Expr {
 }
 
 fn expr<'a>(
-    stmt: impl Parser<'a, &'a [Token], Statement, extra::Err<Rich<'a, &'a [Token]>>> + Clone + 'a,
-) -> impl Parser<'a, &'a [Token], Expr, extra::Err<Rich<'a, &'a [Token]>>> + Clone {
+    stmt: impl Parser<'a, TokenStream, Statement, TokenError<'a>> + Clone + 'a,
+) -> impl Parser<'a, TokenStream, Expr, TokenError<'a>> + Clone {
     let string = select! { Token::String(value) => value.clone() }.map(Expr::String);
     let decimal = select! { Token::Decimal(value) => value.parse() }
         .unwrapped()
