@@ -1,8 +1,8 @@
 mod lexer;
 mod parser;
 
-use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
-use chumsky::{input::Stream, Parser};
+//use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
+use chumsky::Parser;
 
 pub use self::lexer::Token;
 pub use self::parser::{Expr, Statement};
@@ -14,7 +14,6 @@ pub fn parse(src: &str) -> Option<Vec<Statement>> {
     }
 
     let ast = if let Some(tokens) = tokens {
-        let len = src.chars().count();
         let (ast, parse_errs) = parser::parser().parse(&tokens).into_output_errors();
         for err in parse_errs {
             println!("{}", err);

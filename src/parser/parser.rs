@@ -53,7 +53,8 @@ pub fn parser<'a>(
                 .map(|((condition, statements), branch)| {
                     Statement::If(condition, statements, branch.map(Box::new))
                 })
-        });
+        })
+        .boxed();
         let while_stmt = just(Token::While)
             .ignore_then(expr.clone())
             .then(
@@ -93,7 +94,8 @@ pub fn parser<'a>(
                     return_type,
                     body,
                 },
-            );
+            )
+            .boxed();
 
         let declaration_stmt = ident
             .then_ignore(just(Token::Declare))
@@ -121,18 +123,24 @@ pub fn parser<'a>(
             .then_ignore(just(Token::Semicolon))
             .map(Statement::Expr);
 
-        if_stmt
-            .or(while_stmt)
-            .or(function_declaration_stmt)
-            .or(declaration_stmt)
-            .or(assignment_stmt)
-            .or(return_stmt)
-            .or(continue_stmt)
-            .or(break_stmt)
-            .or(expr_stmt)
+        choice((
+            if_stmt,
+            while_stmt,
+            function_declaration_stmt,
+            declaration_stmt,
+            assignment_stmt,
+            return_stmt,
+            continue_stmt,
+            break_stmt,
+            expr_stmt,
+        ))
+        .boxed()
     });
 
-    stmt.repeated().collect::<Vec<_>>().then_ignore(end())
+    stmt.repeated()
+        .collect::<Vec<_>>()
+        .then_ignore(end())
+        .boxed()
 }
 
 #[derive(Clone, Debug)]
@@ -199,7 +207,8 @@ fn expr<'a>(
                 .map(|((cond, val), branch)| {
                     Expr::If(Box::new(cond), Box::new(val), branch.map(Box::new))
                 })
-        });
+        })
+        .boxed();
         let function = just(Token::Func)
             .ignore_then(
                 ident
@@ -213,17 +222,20 @@ fn expr<'a>(
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
             )
-            .map(|(params, statements)| Expr::Function(params, statements));
-        let value = nested_expr
-            .or(array)
-            .or(if_expr)
-            .or(function)
-            .or(string)
-            .or(decimal)
-            .or(integer)
-            .or(boolean)
-            .or(nil)
-            .or(expr_ident);
+            .map(|(params, statements)| Expr::Function(params, statements))
+            .boxed();
+        let value = choice((
+            nested_expr,
+            array,
+            if_expr,
+            function,
+            string,
+            decimal,
+            integer,
+            boolean,
+            nil,
+            expr_ident,
+        ));
 
         let prefix_op = one_of(&[Token::LogicalNot, Token::Plus, Token::Minus]);
 
@@ -233,7 +245,8 @@ fn expr<'a>(
             .allow_trailing()
             .collect::<Vec<_>>()
             .delimited_by(just(Token::LeftParen), just(Token::RightParen))
-            .map(|params| SuffixOp::Call(params));
+            .map(|params| SuffixOp::Call(params))
+            .boxed();
         let index = expr
             .clone()
             .delimited_by(just(Token::LeftBracket), just(Token::RightBracket))
@@ -278,6 +291,7 @@ fn expr<'a>(
             |lhs, (op, rhs)| Expr::BinaryOp(Box::new(lhs), op.clone(), Box::new(rhs)),
         );
 
-        l_or
+        l_or.boxed()
     })
+    .boxed()
 }

@@ -93,60 +93,64 @@ pub fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Token>, extra::Err<Rich<'a, &
     let line_comment = just("//").then(skip_until(newline())).padded().to(());
     let block_comment = just("/*").then(skip_until(just("*/"))).padded().to(());
     let comment = line_comment.or(block_comment);
-    keyword()
-        .or(control_tokens())
-        .or(operator())
-        .or(literal())
+    choice((keyword(), control_tokens(), operator(), literal()))
         //.map_with_span(|tok, span| (tok, span))
         .padded_by(comment.repeated())
         .padded()
         .repeated()
         .collect::<Vec<_>>()
         .then_ignore(end())
+        .boxed()
 }
 
 fn keyword<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
-    text::keyword("return")
-        .to(Token::Return)
-        .or(text::keyword("continue").to(Token::Continue))
-        .or(text::keyword("break").to(Token::Break))
-        .or(text::keyword("func").to(Token::Func))
-        .or(text::keyword("if").to(Token::If))
-        .or(text::keyword("else").to(Token::Else))
-        .or(text::keyword("while").to(Token::While))
+    choice((
+        text::keyword("return").to(Token::Return),
+        text::keyword("continue").to(Token::Continue),
+        text::keyword("break").to(Token::Break),
+        text::keyword("func").to(Token::Func),
+        text::keyword("if").to(Token::If),
+        text::keyword("else").to(Token::Else),
+        text::keyword("while").to(Token::While),
+    ))
+    .boxed()
 }
 
 fn operator<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
-    just(":=")
-        .to(Token::Declare)
-        .or(just("==").to(Token::Equal))
-        .or(just("!=").to(Token::NotEqual))
-        .or(just("<=").to(Token::LessOrEqual))
-        .or(just(">=").to(Token::GreaterOrEqual))
-        .or(just("||").to(Token::LogicalOr))
-        .or(just("&&").to(Token::LogicalAnd))
-        .or(just('<').to(Token::Less))
-        .or(just('<').to(Token::Greater))
-        .or(just('=').to(Token::Assign))
-        .or(just('+').to(Token::Plus))
-        .or(just('-').to(Token::Minus))
-        .or(just('*').to(Token::Multiply))
-        .or(just('/').to(Token::Divide))
-        .or(just('!').to(Token::LogicalNot))
+    choice((
+        just(":=").to(Token::Declare),
+        just("==").to(Token::Equal),
+        just("!=").to(Token::NotEqual),
+        just("<=").to(Token::LessOrEqual),
+        just(">=").to(Token::GreaterOrEqual),
+        just("||").to(Token::LogicalOr),
+        just("&&").to(Token::LogicalAnd),
+        just('<').to(Token::Less),
+        just('<').to(Token::Greater),
+        just('=').to(Token::Assign),
+        just('+').to(Token::Plus),
+        just('-').to(Token::Minus),
+        just('*').to(Token::Multiply),
+        just('/').to(Token::Divide),
+        just('!').to(Token::LogicalNot),
+    ))
+    .boxed()
 }
 
 fn control_tokens<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
-    just(";")
-        .to(Token::Semicolon)
-        .or(just(",").to(Token::Comma))
-        .or(just(":").to(Token::Colon))
-        .or(just("->").to(Token::Arrow))
-        .or(just("(").to(Token::LeftParen))
-        .or(just(")").to(Token::RightParen))
-        .or(just("{").to(Token::LeftBrace))
-        .or(just("}").to(Token::RightBrace))
-        .or(just("[").to(Token::LeftBracket))
-        .or(just("]").to(Token::RightBracket))
+    choice((
+        just(";").to(Token::Semicolon),
+        just(",").to(Token::Comma),
+        just(":").to(Token::Colon),
+        just("->").to(Token::Arrow),
+        just("(").to(Token::LeftParen),
+        just(")").to(Token::RightParen),
+        just("{").to(Token::LeftBrace),
+        just("}").to(Token::RightBrace),
+        just("[").to(Token::LeftBracket),
+        just("]").to(Token::RightBracket),
+    ))
+    .boxed()
 }
 
 fn literal<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>>> {
@@ -193,5 +197,5 @@ fn literal<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, &'a str>
     let ident = text::ident()
         .map(ToString::to_string)
         .map(Token::Identifier);
-    string.or(decimal).or(integer).or(boolean).or(nil).or(ident)
+    choice((string, decimal, integer, boolean, nil, ident)).boxed()
 }
