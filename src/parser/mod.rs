@@ -3,7 +3,7 @@ mod parser;
 
 use std::ops::Range;
 
-use ariadne::{Color, Fmt, Label, Report, ReportKind, Source};
+use ariadne::{sources, Color, Fmt, Label, Report, ReportKind, Source};
 use chumsky::error::RichReason;
 use chumsky::input::{Input, Stream};
 use chumsky::prelude::Rich;
@@ -12,19 +12,46 @@ use chumsky::Parser;
 pub use self::lexer::Token;
 pub use self::parser::{Expr, Statement};
 
-fn create_error_report<'a, T>(e: Rich<'a, T>) -> Report
+struct SourceSpan {
+    file_name: String,
+    start: usize,
+    end: usize,
+}
+
+impl ariadne::Span for SourceSpan {
+    type SourceId = String;
+
+    fn source(&self) -> &Self::SourceId {
+        &self.file_name
+    }
+
+    fn start(&self) -> usize {
+        self.start
+    }
+
+    fn end(&self) -> usize {
+        self.end
+    }
+}
+
+fn create_error_report<'a, T>(e: Rich<'a, T>) -> Report<SourceSpan>
 where
     T: Input<'a>,
     T::Span: Clone + Into<Range<usize>>,
     T::Token: std::fmt::Display,
 {
-    let span: Range<usize> = e.span().into();
-    let report = Report::build(ReportKind::Error, (), span.start);
+    let range: Range<usize> = e.span().into();
+    let span = SourceSpan {
+        file_name: "input".to_string(),
+        start: range.start,
+        end: range.end,
+    };
+    let report = Report::build(ReportKind::Error, "input", span.start);
     let report = match e.reason() {
         RichReason::ExpectedFound { expected, found } => report
             .with_message(format!(
                 "{}, expected {}",
-                if e.found().is_some() {
+                if found.is_some() {
                     "Unexpected token in input"
                 } else {
                     "Unexpected end of input"
@@ -65,9 +92,11 @@ where
 }
 
 pub fn parse(src: &str) -> Option<Vec<Statement>> {
+    let files = vec![("input".to_string(), src)];
     let (tokens, lex_errs) = lexer::lexer().parse(src).into_output_errors();
     for err in lex_errs {
-        create_error_report(err).print(Source::from(&src)).unwrap();
+        let files = sources(files.clone());
+        create_error_report(err).print(files).unwrap();
     }
 
     let ast = if let Some(tokens) = tokens {
@@ -76,7 +105,8 @@ pub fn parse(src: &str) -> Option<Vec<Statement>> {
             .parse(Stream::from_iter(tokens.into_iter()).spanned(len..len + 1))
             .into_output_errors();
         for err in parse_errs {
-            create_error_report(err).print(Source::from(&src)).unwrap();
+            let files = sources(files.clone());
+            create_error_report(err).print(files).unwrap();
         }
         ast
     } else {

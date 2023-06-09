@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-ariadne = "0.1"
+ariadne = { git = "https://github.com/zesterer/ariadne.git", rev = "14c4c1884842caf3c1ca3384ec41e9ffdc48f108" }
 chumsky = "1.0.0-alpha.0"
 thiserror = "1"
 wasm-encoder = "0.20"

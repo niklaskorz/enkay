@@ -242,7 +242,8 @@ where
             boolean,
             nil,
             expr_ident,
-        ));
+        ))
+        .boxed();
 
         let prefix_op = one_of(&[Token::LogicalNot, Token::Plus, Token::Minus]);
 
