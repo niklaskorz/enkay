@@ -10,7 +10,6 @@ fn main() -> Result<()> {
         .expect("Failed to read file");
     let ast = parser::parse(&src).unwrap();
     println!("{:?}", ast);
-    let ast = vec![ast];
     let binary = compile(ast)?;
     execute_wasm(binary)?;
 

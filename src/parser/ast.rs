@@ -11,7 +11,7 @@ pub enum Statement {
     },
     Declaration(String, Expr),
     Assignment(String, Expr),
-    Return(Option<Expr>),
+    Return(Option<Box<Expr>>),
     Continue,
     Break,
     Expr(Box<Expr>),

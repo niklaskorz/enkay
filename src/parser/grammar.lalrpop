@@ -2,11 +2,23 @@ use crate::ast::*;
 
 grammar;
 
-pub Statement: Statement = {
+pub Block: Vec<Statement> = {
+    <mut v:(Statement)*> => v,
+};
+
+Statement: Statement = {
+    "func" <name:Identifier> "(" <params:Params> ")" "->" <return_type:Identifier> "{" <body:Block> "}" => Statement::FunctionDeclaration { name, params, return_type, body },
+    "return" <e:Expr?> ";" => Statement::Return(e),
     <e:Expr> ";" => Statement::Expr(e),
 };
 
-pub Expr: Box<Expr> = {
+Params = Comma<Param>;
+
+Param: Param = {
+    <name:Identifier> ":" <data_type:Identifier> => Param { name, data_type },
+};
+
+Expr: Box<Expr> = {
     LOr,
 };
 
@@ -98,8 +110,10 @@ Comma<T>: Vec<T> = {
 Value: Box<Expr> = {
     Decimal => Box::new(Expr::Decimal(<>)),
     Integer => Box::new(Expr::Integer(<>)),
+    Identifier => Box::new(Expr::Ident(<>)),
     "(" <e:Expr> ")" => e,
 };
 
+Identifier: String = <s:r"[a-zA-Z_][a-zA-Z_0-9]*"> => s.to_string();
 Decimal: f64 = <s:r"[0-9]+\.[0-9]+"> => s.parse().unwrap();
 Integer: i64 = <s:r"[0-9]+"> => s.parse().unwrap();
