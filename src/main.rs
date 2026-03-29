@@ -1,19 +1,18 @@
 mod parser;
 
 use anyhow::{anyhow, Result};
-use parser::Expr;
 use wasm_encoder::Function;
 
-use crate::parser::{Statement, Token};
+use parser::ast;
 
 fn main() -> Result<()> {
     let src = std::fs::read_to_string(std::env::args().nth(1).expect("Expected file argument"))
         .expect("Failed to read file");
-    let ast = parser::parse(&src);
-    if let Some(ast) = ast {
-        let binary = compile(ast)?;
-        execute_wasm(binary)?;
-    }
+    let ast = parser::parse(&src).unwrap();
+    println!("{:?}", ast);
+    let ast = vec![ast];
+    let binary = compile(ast)?;
+    execute_wasm(binary)?;
 
     Ok(())
 }
@@ -79,7 +78,7 @@ fn execute_wasm(binary: Vec<u8>) -> Result<()> {
     Ok(())
 }
 
-fn compile(ast: Vec<parser::Statement>) -> Result<Vec<u8>> {
+fn compile(ast: Vec<ast::Statement>) -> Result<Vec<u8>> {
     use wasm_encoder::{
         CodeSection, ExportKind, ExportSection, FunctionSection, Instruction, Module, TypeSection,
     };
@@ -92,7 +91,7 @@ fn compile(ast: Vec<parser::Statement>) -> Result<Vec<u8>> {
     let mut type_index = 0;
     for statement in ast {
         match statement {
-            Statement::FunctionDeclaration {
+            ast::Statement::FunctionDeclaration {
                 name,
                 params,
                 return_type,
@@ -103,7 +102,7 @@ fn compile(ast: Vec<parser::Statement>) -> Result<Vec<u8>> {
                     .map(|p| map_type(&p.data_type).unwrap())
                     .collect();
                 let results = vec![map_type(&return_type)?];
-                types.function(param_types, results);
+                types.ty().function(param_types, results);
                 functions.function(type_index);
                 exports.export(&name, ExportKind::Func, type_index);
 
@@ -112,7 +111,7 @@ fn compile(ast: Vec<parser::Statement>) -> Result<Vec<u8>> {
                 let locals: Vec<_> = params.into_iter().map(|p| p.name).collect();
                 for statement in body {
                     match statement {
-                        Statement::Return(expr) => {
+                        ast::Statement::Return(expr) => {
                             if let Some(expr) = expr {
                                 compile_expression(&mut f, &locals, &expr);
                             }
@@ -140,10 +139,10 @@ fn compile(ast: Vec<parser::Statement>) -> Result<Vec<u8>> {
     Ok(module.finish())
 }
 
-fn compile_expression(f: &mut Function, locals: &Vec<String>, expr: &Expr) {
+fn compile_expression(f: &mut Function, locals: &Vec<String>, expr: &ast::Expr) {
     use wasm_encoder::Instruction;
     match expr {
-        Expr::Ident(name) => {
+        ast::Expr::Ident(name) => {
             f.instruction(&Instruction::LocalGet(
                 locals
                     .iter()
@@ -153,26 +152,26 @@ fn compile_expression(f: &mut Function, locals: &Vec<String>, expr: &Expr) {
                     .unwrap(),
             ));
         }
-        &Expr::Decimal(val) => {
-            f.instruction(&Instruction::F64Const(val));
+        &ast::Expr::Decimal(val) => {
+            f.instruction(&Instruction::F64Const(val.into()));
         }
-        &Expr::Integer(val) => {
+        &ast::Expr::Integer(val) => {
             f.instruction(&Instruction::I64Const(val));
         }
-        Expr::BinaryOp(lhs, op, rhs) => {
+        ast::Expr::BinaryOp(lhs, op, rhs) => {
             compile_expression(f, locals, lhs);
             compile_expression(f, locals, rhs);
             match op {
-                Token::Multiply => {
+                ast::BinaryOp::Multiply => {
                     f.instruction(&Instruction::I64Mul);
                 }
-                Token::Divide => {
+                ast::BinaryOp::Divide => {
                     f.instruction(&Instruction::I64DivS);
                 }
-                Token::Plus => {
+                ast::BinaryOp::Plus => {
                     f.instruction(&Instruction::I64Add);
                 }
-                Token::Minus => {
+                ast::BinaryOp::Minus => {
                     f.instruction(&Instruction::I64Sub);
                 }
                 _ => {
@@ -180,13 +179,13 @@ fn compile_expression(f: &mut Function, locals: &Vec<String>, expr: &Expr) {
                 }
             }
         }
-        Expr::PrefixOp(op, rhs) => match op {
-            Token::Minus => {
+        ast::Expr::PrefixOp(op, rhs) => match op {
+            ast::PrefixOp::Minus => {
                 f.instruction(&Instruction::I64Const(0));
                 compile_expression(f, locals, rhs);
                 f.instruction(&Instruction::I64Sub);
             }
-            Token::Plus => {
+            ast::PrefixOp::Plus => {
                 compile_expression(f, locals, rhs);
             }
             _ => {

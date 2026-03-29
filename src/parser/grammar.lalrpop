@@ -1,0 +1,105 @@
+use crate::ast::*;
+
+grammar;
+
+pub Statement: Statement = {
+    <e:Expr> ";" => Statement::Expr(e),
+};
+
+pub Expr: Box<Expr> = {
+    LOr,
+};
+
+LOr: Box<Expr> = {
+    LOr LOrOp LAnd => Box::new(Expr::BinaryOp(<>)),
+    LAnd,
+};
+
+LAnd: Box<Expr> = {
+    LAnd LAndOp Comp => Box::new(Expr::BinaryOp(<>)),
+    Comp,
+};
+
+Comp: Box<Expr> = {
+    Term CompOp Term => Box::new(Expr::BinaryOp(<>)),
+    Term,
+};
+
+Term: Box<Expr> = {
+    Term AddendOp Addend => Box::new(Expr::BinaryOp(<>)),
+    Addend,
+};
+
+Addend: Box<Expr> = {
+    Addend FactorOp Factor => Box::new(Expr::BinaryOp(<>)),
+    Factor,
+};
+
+Factor: Box<Expr> = {
+    PrefixOp Factor => Box::new(Expr::PrefixOp(<>)),
+    PrefixOperand,
+};
+
+PrefixOperand: Box<Expr> = {
+    PrefixOperand SuffixOp =>  Box::new(Expr::SuffixOp(<>)),
+    Value,
+};
+
+LOrOp: BinaryOp = {
+    "||" => BinaryOp::LogicalOr,
+};
+
+LAndOp: BinaryOp = {
+    "&&" => BinaryOp::LogicalAnd,
+};
+
+CompOp: BinaryOp = {
+    "==" => BinaryOp::Equal,
+    "!=" => BinaryOp::NotEqual,
+    ">=" => BinaryOp::GreaterOrEqual,
+    "<=" => BinaryOp::LessOrEqual,
+    ">" => BinaryOp::Greater,
+    "<" => BinaryOp::Less,
+};
+
+AddendOp: BinaryOp = {
+    "+" => BinaryOp::Plus,
+    "-" => BinaryOp::Minus,
+};
+
+FactorOp: BinaryOp = {
+    "*" => BinaryOp::Multiply,
+    "/" => BinaryOp::Divide,
+};
+
+PrefixOp: PrefixOp = {
+    "!" => PrefixOp::LogicalNot,
+    "+" => PrefixOp::Plus,
+    "-" => PrefixOp::Minus,
+};
+
+SuffixOp: SuffixOp = {
+    "(" <e:Exprs> ")" => SuffixOp::Call(e),
+    "[" <e:Expr> "]" => SuffixOp::Index(e),
+};
+
+Exprs = Comma<Expr>;
+
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
+
+Value: Box<Expr> = {
+    Decimal => Box::new(Expr::Decimal(<>)),
+    Integer => Box::new(Expr::Integer(<>)),
+    "(" <e:Expr> ")" => e,
+};
+
+Decimal: f64 = <s:r"[0-9]+\.[0-9]+"> => s.parse().unwrap();
+Integer: i64 = <s:r"[0-9]+"> => s.parse().unwrap();

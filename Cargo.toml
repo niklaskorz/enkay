@@ -1,14 +1,16 @@
 [package]
 name = "enkay"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1"
-ariadne = { git = "https://github.com/zesterer/ariadne.git", rev = "14c4c1884842caf3c1ca3384ec41e9ffdc48f108" }
-chumsky = "1.0.0-alpha.0"
-thiserror = "1"
-wasm-encoder = "0.20"
-wasmtime = "4.0"
+anyhow = "1.0.102"
+lalrpop-util = "0.23.1"
+thiserror = "2.0.18"
+wasm-encoder = "0.245.1"
+wasmtime = "43.0.0"
+
+[build-dependencies]
+lalrpop = "0.23.1"
