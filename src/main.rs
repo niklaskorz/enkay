@@ -1,7 +1,7 @@
 mod parser;
 
-use anyhow::{anyhow, Result};
-use wasm_encoder::Function;
+use anyhow::{Result, anyhow};
+use wasm_encoder::{Function, InstructionSink};
 
 use parser::ast;
 
@@ -80,7 +80,7 @@ fn execute_wasm(binary: Vec<u8>) -> Result<()> {
 
 fn compile(ast: Vec<ast::Statement>) -> Result<Vec<u8>> {
     use wasm_encoder::{
-        CodeSection, ExportKind, ExportSection, FunctionSection, Instruction, Module, TypeSection,
+        CodeSection, ExportKind, ExportSection, FunctionSection, Module, TypeSection,
     };
 
     let mut types = TypeSection::new();
@@ -107,21 +107,22 @@ fn compile(ast: Vec<ast::Statement>) -> Result<Vec<u8>> {
                 exports.export(&name, ExportKind::Func, type_index);
 
                 let locals = vec![];
-                let mut f = Function::new(locals);
+                let mut function = Function::new(locals);
+                let mut sink = function.instructions();
                 let locals: Vec<_> = params.into_iter().map(|p| p.name).collect();
                 for statement in body {
                     match statement {
                         ast::Statement::Return(expr) => {
                             if let Some(expr) = expr {
-                                compile_expression(&mut f, &locals, &expr);
+                                compile_expression(&mut sink, &locals, &expr);
                             }
-                            f.instruction(&Instruction::Return);
+                            sink.return_();
                         }
                         _ => {}
                     }
                 }
-                f.instruction(&Instruction::End);
-                codes.function(&f);
+                sink.end();
+                codes.function(&function);
 
                 type_index += 1;
             }
@@ -139,61 +140,60 @@ fn compile(ast: Vec<ast::Statement>) -> Result<Vec<u8>> {
     Ok(module.finish())
 }
 
-fn compile_expression(f: &mut Function, locals: &Vec<String>, expr: &ast::Expr) {
-    use wasm_encoder::Instruction;
+fn compile_expression(sink: &mut InstructionSink, locals: &Vec<String>, expr: &ast::Expr) {
     match expr {
         ast::Expr::Ident(name) => {
-            f.instruction(&Instruction::LocalGet(
+            sink.local_get(
                 locals
                     .iter()
                     .position(|l| l == name)
                     .unwrap()
                     .try_into()
                     .unwrap(),
-            ));
+            );
         }
         &ast::Expr::Decimal(val) => {
-            f.instruction(&Instruction::F64Const(val.into()));
+            sink.f64_const(val.into());
         }
         &ast::Expr::Integer(val) => {
-            f.instruction(&Instruction::I64Const(val));
+            sink.i64_const(val);
         }
         ast::Expr::BinaryOp(lhs, op, rhs) => {
-            compile_expression(f, locals, lhs);
-            compile_expression(f, locals, rhs);
+            compile_expression(sink, locals, lhs);
+            compile_expression(sink, locals, rhs);
             match op {
                 ast::BinaryOp::Multiply => {
-                    f.instruction(&Instruction::I64Mul);
+                    sink.i64_mul();
                 }
                 ast::BinaryOp::Divide => {
-                    f.instruction(&Instruction::I64DivS);
+                    sink.i64_div_s();
                 }
                 ast::BinaryOp::Plus => {
-                    f.instruction(&Instruction::I64Add);
+                    sink.i64_add();
                 }
                 ast::BinaryOp::Minus => {
-                    f.instruction(&Instruction::I64Sub);
+                    sink.i64_sub();
                 }
                 _ => {
-                    f.instruction(&Instruction::Unreachable);
+                    sink.unreachable();
                 }
             }
         }
         ast::Expr::PrefixOp(op, rhs) => match op {
             ast::PrefixOp::Minus => {
-                f.instruction(&Instruction::I64Const(0));
-                compile_expression(f, locals, rhs);
-                f.instruction(&Instruction::I64Sub);
+                sink.i64_const(0);
+                compile_expression(sink, locals, rhs);
+                sink.i64_sub();
             }
             ast::PrefixOp::Plus => {
-                compile_expression(f, locals, rhs);
+                compile_expression(sink, locals, rhs);
             }
             _ => {
-                f.instruction(&Instruction::Unreachable);
+                sink.unreachable();
             }
         },
         _ => {
-            f.instruction(&Instruction::Unreachable);
+            sink.unreachable();
         }
     }
 }
