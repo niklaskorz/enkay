@@ -6,8 +6,28 @@ func answer(a: i64, b: i64) -> i64 {
 }
 
 func _start() -> i64 {
-    while false {
-        return 0;
+    i := 0;
+    proceed := true;
+    while proceed {
+        if i < 0 {
+            break;
+        }
+        i = i + 1;
+        proceed = i > 42;
     }
+
+    hello := "world with \" escapes";
+
+    values := [
+        4,
+        90,
+        50.5,
+        true,
+    ];
+
+    lambda := func(x: i64, pi: f32) -> i64 {
+        return x * pi;
+    };
+
     return 42;
 }

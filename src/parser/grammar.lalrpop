@@ -1,4 +1,4 @@
-use crate::ast::*;
+use crate::parser::{ast::*, utils::*};
 
 grammar;
 
@@ -7,20 +7,25 @@ pub Block: Vec<Statement> = {
 };
 
 Statement: Statement = {
+    "{" <body:Block> "}" => Statement::Block(body),
     IfStatement,
     "while" <cond:Expr> "{" <body:Block> "}" => Statement::While(cond, body),
     "func" <name:Identifier> "(" <params:Params> ")" "->" <return_type:Identifier>
         "{" <body:Block> "}" => Statement::FunctionDeclaration { name, params, return_type, body },
+    <name:Identifier> ":=" <value:Expr> ";" => Statement::Declaration(name, value),
+    <name:Identifier> "=" <value:Expr> ";" => Statement::Assignment(name, value),
     "return" <e:Expr?> ";" => Statement::Return(e),
+    "continue" ";" => Statement::Continue,
+    "break" ";" => Statement::Break,
     <e:Expr> ";" => Statement::Expr(e),
 };
 
 IfStatement: Statement = {
-    "if" <cond:Expr> "{" <body:Block> "}" <else_branch:ElseBranch?> =>
+    "if" <cond:Expr> "{" <body:Block> "}" <else_branch:ElseBranchStatement?> =>
         Statement::If(cond, body, else_branch),
 };
 
-ElseBranch: Box<Statement> = {
+ElseBranchStatement: Box<Statement> = {
     "else" <stmt:IfStatement> => Box::new(stmt),
     "else" "{" <body:Block> "}" => Box::new(Statement::Block(body)),
 };
@@ -122,16 +127,33 @@ Comma<T>: Vec<T> = {
 
 Value: Box<Expr> = {
     "(" <e:Expr> ")" => e,
+    "nil" => Box::new(Expr::Nil),
     Identifier => Box::new(Expr::Ident(<>)),
     Decimal => Box::new(Expr::Decimal(<>)),
     Integer => Box::new(Expr::Integer(<>)),
     Boolean => Box::new(Expr::Boolean(<>)),
+    String => Box::new(Expr::String(<>)),
+    "[" <a:Exprs> "]" => Box::new(Expr::Array(a)),
+    IfExpression,
+    "func" "(" <params:Params> ")" "->" <return_type:Identifier>
+        "{" <body:Block> "}" => Box::new(Expr::Function { params, return_type, body }),
 };
 
-Identifier: String = <s:r"[a-zA-Z_][a-zA-Z_0-9]*"> => s.to_string();
+IfExpression: Box<Expr> = {
+    "if" <cond:Expr> "{" <then:Expr> "}" <else_branch:ElseBranchExpression> =>
+        Box::new(Expr::If(cond, then, else_branch)),
+};
+
+ElseBranchExpression: Box<Expr> = {
+    "else" <e:IfExpression> => e,
+    "else" "{" <e:Expr> "}" => e,
+};
+
 Decimal: f64 = <s:r"[0-9]+\.[0-9]+"> => s.parse().unwrap();
 Integer: i64 = <s:r"[0-9]+"> => s.parse().unwrap();
 Boolean: bool = {
     "true" => true,
     "false" => false,
 };
+String: String = <s:r#""(\\\\|\\"|[^"\\])*""#> => apply_string_escapes(&s[1..s.len()-1]);
+Identifier: String = <s:r"[a-zA-Z_][a-zA-Z_0-9]*"> => s.to_string();
