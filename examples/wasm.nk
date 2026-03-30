@@ -1,7 +1,13 @@
 func answer(a: i64, b: i64) -> i64 {
+    if b < 0 {
+        return a;
+    }
     return -(4 * (b + b) - 6 / 3 + a);
 }
 
 func _start() -> i64 {
+    while false {
+        return 0;
+    }
     return 42;
 }

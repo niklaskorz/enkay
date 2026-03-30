@@ -2,7 +2,7 @@
 pub enum Statement {
     Block(Vec<Statement>),
     If(Box<Expr>, Vec<Statement>, Option<Box<Statement>>),
-    While(Expr, Vec<Statement>),
+    While(Box<Expr>, Vec<Statement>),
     FunctionDeclaration {
         name: String,
         params: Vec<Param>,
