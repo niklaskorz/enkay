@@ -29,5 +29,5 @@ func _start() -> i64 {
         return x * pi;
     };
 
-    return 42;
+    return i;
 }

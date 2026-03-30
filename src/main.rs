@@ -1,6 +1,6 @@
 mod parser;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use wasm_encoder::{Function, InstructionSink};
 
 use parser::ast;
@@ -28,8 +28,7 @@ fn execute_wasm(binary: Vec<u8>) -> Result<()> {
     //wasmtime_wasi::add_to_linker(&mut linker, |s| s)?;
 
     // We start off by creating a `Module` which represents a compiled form
-    // of our input wasm module. In this case it'll be JIT-compiled after
-    // we parse the text format.
+    // of our input wasm module. In this case it'll be JIT-compiled.
     let module = Module::from_binary(&engine, &binary)?;
 
     // Create a WASI context and put it in a Store; all instances in the store
@@ -65,8 +64,7 @@ fn execute_wasm(binary: Vec<u8>) -> Result<()> {
         .expect("`answer` was not an exported function");
 
     // There's a few ways we can call the `answer` `Func` value. The easiest
-    // is to statically assert its signature with `typed` (in this case
-    // asserting it takes no arguments and returns one i32) and then call it.
+    // is to statically assert its signature with `typed` and then call it.
     let answer = answer.typed::<(i64, i64), i64>(&store)?;
 
     // And finally we can call our function! Note that the error propagation
@@ -125,7 +123,9 @@ fn compile(ast: Vec<ast::Statement>) -> Result<Vec<u8>> {
 
                 type_index += 1;
             }
-            _ => {}
+            stmt => {
+                bail!("unexpected top-level statement {:?}", stmt)
+            }
         }
     }
 
@@ -146,7 +146,7 @@ fn compile_expression(sink: &mut InstructionSink, locals: &Vec<String>, expr: &a
                 locals
                     .iter()
                     .position(|l| l == name)
-                    .unwrap()
+                    .expect(&format!("unknown variable {}", name))
                     .try_into()
                     .unwrap(),
             );
