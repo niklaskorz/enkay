@@ -9,7 +9,7 @@ fn main() -> Result<()> {
     let src = std::fs::read_to_string(std::env::args().nth(1).expect("Expected file argument"))
         .expect("Failed to read file");
     let ast = parser::parse(&src).unwrap();
-    println!("{:?}", ast);
+    println!("{:#?}", ast);
     let binary = compile(ast)?;
     execute_wasm(binary)?;
 

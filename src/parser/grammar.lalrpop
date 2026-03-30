@@ -7,9 +7,21 @@ pub Block: Vec<Statement> = {
 };
 
 Statement: Statement = {
-    "func" <name:Identifier> "(" <params:Params> ")" "->" <return_type:Identifier> "{" <body:Block> "}" => Statement::FunctionDeclaration { name, params, return_type, body },
+    IfStatement,
+    "func" <name:Identifier> "(" <params:Params> ")" "->" <return_type:Identifier>
+        "{" <body:Block> "}" => Statement::FunctionDeclaration { name, params, return_type, body },
     "return" <e:Expr?> ";" => Statement::Return(e),
     <e:Expr> ";" => Statement::Expr(e),
+};
+
+IfStatement: Statement = {
+    "if" <cond:Expr> "{" <body:Block> "}" <else_branch:ElseBranch?> =>
+        Statement::If(cond, body, else_branch),
+};
+
+ElseBranch: Box<Statement> = {
+    "else" <stmt:IfStatement> => Box::new(stmt),
+    "else" "{" <body:Block> "}" => Box::new(Statement::Block(body)),
 };
 
 Params = Comma<Param>;

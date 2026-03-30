@@ -1,7 +1,7 @@
 #[derive(Clone, Debug)]
 pub enum Statement {
     Block(Vec<Statement>),
-    If(Expr, Vec<Statement>, Option<Box<Statement>>),
+    If(Box<Expr>, Vec<Statement>, Option<Box<Statement>>),
     While(Expr, Vec<Statement>),
     FunctionDeclaration {
         name: String,
