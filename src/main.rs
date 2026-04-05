@@ -203,8 +203,29 @@ fn compile_expression(sink: &mut InstructionSink, locals: &Vec<String>, expr: &a
                 ast::BinaryOp::Minus => {
                     sink.i64_sub();
                 }
-                op => {
-                    bail!("unexpected binary op {:?}", op);
+                ast::BinaryOp::Equal => {
+                    sink.i32_eq();
+                }
+                ast::BinaryOp::NotEqual => {
+                    sink.i32_ne();
+                }
+                ast::BinaryOp::GreaterOrEqual => {
+                    sink.i32_ge_s();
+                }
+                ast::BinaryOp::LessOrEqual => {
+                    sink.i32_le_s();
+                }
+                ast::BinaryOp::Greater => {
+                    sink.i32_gt_s();
+                }
+                ast::BinaryOp::Less => {
+                    sink.i32_lt_s();
+                }
+                ast::BinaryOp::LogicalAnd => {
+                    sink.i32_and();
+                }
+                ast::BinaryOp::LogicalOr => {
+                    sink.i32_or();
                 }
             }
         }
