@@ -108,15 +108,7 @@ fn compile(ast: Vec<ast::Statement>) -> Result<Vec<u8>> {
                 let mut sink = function.instructions();
                 let locals: Vec<_> = params.into_iter().map(|p| p.name).collect();
                 for statement in body {
-                    match statement {
-                        ast::Statement::Return(expr) => {
-                            if let Some(expr) = expr {
-                                compile_expression(&mut sink, &locals, &expr);
-                            }
-                            sink.return_();
-                        }
-                        _ => {}
-                    }
+                    compile_statement(&mut sink, &locals, &statement)?;
                 }
                 sink.end();
                 codes.function(&function);
@@ -139,7 +131,23 @@ fn compile(ast: Vec<ast::Statement>) -> Result<Vec<u8>> {
     Ok(module.finish())
 }
 
-fn compile_expression(sink: &mut InstructionSink, locals: &Vec<String>, expr: &ast::Expr) {
+fn compile_statement(sink: &mut InstructionSink, locals: &Vec<String>, statement: &ast::Statement) -> Result<()> {
+    match statement {
+        ast::Statement::Return(expr) => {
+            if let Some(expr) = expr {
+                compile_expression(sink, &locals, expr)?;
+            }
+            sink.return_();
+        }
+        stmt => {
+            bail!("unexpected block-level statement {:?}", stmt);
+        }
+    }
+
+    Ok(())
+}
+
+fn compile_expression(sink: &mut InstructionSink, locals: &Vec<String>, expr: &ast::Expr) -> Result<()> {
     match expr {
         ast::Expr::Ident(name) => {
             sink.local_get(
@@ -162,8 +170,8 @@ fn compile_expression(sink: &mut InstructionSink, locals: &Vec<String>, expr: &a
             sink.i32_const(val.into());
         }
         ast::Expr::BinaryOp(lhs, op, rhs) => {
-            compile_expression(sink, locals, lhs);
-            compile_expression(sink, locals, rhs);
+            compile_expression(sink, locals, lhs)?;
+            compile_expression(sink, locals, rhs)?;
             match op {
                 ast::BinaryOp::Multiply => {
                     sink.i64_mul();
@@ -177,28 +185,30 @@ fn compile_expression(sink: &mut InstructionSink, locals: &Vec<String>, expr: &a
                 ast::BinaryOp::Minus => {
                     sink.i64_sub();
                 }
-                _ => {
-                    sink.unreachable();
+                op => {
+                    bail!("unexpected binary op {:?}", op);
                 }
             }
         }
         ast::Expr::PrefixOp(op, rhs) => match op {
             ast::PrefixOp::Minus => {
                 sink.i64_const(0);
-                compile_expression(sink, locals, rhs);
+                compile_expression(sink, locals, rhs)?;
                 sink.i64_sub();
             }
             ast::PrefixOp::Plus => {
-                compile_expression(sink, locals, rhs);
+                compile_expression(sink, locals, rhs)?;
             }
-            _ => {
-                sink.unreachable();
+            op => {
+                bail!("unexpected prefix op {:?}", op);
             }
         },
-        _ => {
-            sink.unreachable();
+        expr => {
+            bail!("unexpected expression {:?}", expr);
         }
     }
+
+    Ok(())
 }
 
 fn map_type(type_name: &str) -> Result<wasm_encoder::ValType> {
