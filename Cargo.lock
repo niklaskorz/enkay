@@ -384,6 +384,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "einklang"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lalrpop",
+ "lalrpop-util",
+ "thiserror 2.0.18",
+ "wasm-encoder 0.245.1",
+ "wasmtime",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -417,18 +429,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "enkay"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "lalrpop",
- "lalrpop-util",
- "thiserror 2.0.18",
- "wasm-encoder 0.245.1",
- "wasmtime",
 ]
 
 [[package]]
