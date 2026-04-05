@@ -187,6 +187,18 @@ fn compile_expression(sink: &mut InstructionSink, locals: &Vec<String>, expr: &a
             // Boolean operations in WASM expect an i32 argument
             sink.i32_const(val.into());
         }
+        ast::Expr::String(val) => {
+            // TODO: no string repr yet
+            sink.i32_const(val.len().try_into().unwrap());
+        }
+        ast::Expr::Array(val) => {
+            // TODO: no array repr yet
+            sink.i32_const(val.len().try_into().unwrap());
+        }
+        ast::Expr::Function { params, .. }=> {
+            // TODO: no anonymous functions yet
+            sink.i32_const(params.len().try_into().unwrap());
+        }
         ast::Expr::BinaryOp(lhs, op, rhs) => {
             compile_expression(sink, locals, lhs)?;
             compile_expression(sink, locals, rhs)?;
