@@ -157,6 +157,10 @@ fn compile_expression(sink: &mut InstructionSink, locals: &Vec<String>, expr: &a
         &ast::Expr::Integer(val) => {
             sink.i64_const(val);
         }
+        &ast::Expr::Boolean(val) => {
+            // Boolean operations in WASM expect an i32 argument
+            sink.i32_const(val.into());
+        }
         ast::Expr::BinaryOp(lhs, op, rhs) => {
             compile_expression(sink, locals, lhs);
             compile_expression(sink, locals, rhs);
