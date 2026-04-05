@@ -1,7 +1,7 @@
 mod parser;
 
 use anyhow::{Result, anyhow, bail};
-use wasm_encoder::{Function, InstructionSink};
+use wasm_encoder::{BlockType, Function, InstructionSink};
 
 use parser::ast;
 
@@ -133,6 +133,24 @@ fn compile(ast: Vec<ast::Statement>) -> Result<Vec<u8>> {
 
 fn compile_statement(sink: &mut InstructionSink, locals: &Vec<String>, statement: &ast::Statement) -> Result<()> {
     match statement {
+        ast::Statement::Block(body) => {
+            for statement in body {
+                compile_statement(sink, locals, statement)?;
+            }
+        },
+        ast::Statement::If(cond, body, els) => {
+            sink.if_(BlockType::Empty);
+            compile_expression(sink, locals, cond)?;
+            for statement in body {
+                compile_statement(sink, locals, statement)?;
+            }
+            if let Some(els) = els {
+                sink.else_();
+                compile_statement(sink, locals, els)?;
+                sink.end();
+            }
+            sink.end();
+        },
         ast::Statement::Return(expr) => {
             if let Some(expr) = expr {
                 compile_expression(sink, &locals, expr)?;
