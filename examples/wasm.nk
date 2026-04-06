@@ -1,11 +1,11 @@
-func answer(a: i64, b: i64) -> i64 {
+func answer(a: i32, b: i32) -> i32 {
     if b < 0 {
         return a;
     }
     return -(4 * (b + b) - 6 / 3 + a);
 }
 
-func _start() -> i64 {
+func _start() -> i32 {
     i := 0;
     proceed := true;
     while proceed {
@@ -25,7 +25,7 @@ func _start() -> i64 {
         true,
     ];
 
-    lambda := func(x: i64, pi: f32) -> i64 {
+    lambda := func(x: i64, pi: f32) -> i32 {
         return x * pi;
     };
 

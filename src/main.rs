@@ -1,7 +1,7 @@
 mod parser;
 
 use anyhow::{Result, anyhow, bail};
-use wasm_encoder::{BlockType, Function, InstructionSink};
+use wasm_encoder::{BlockType, Function, InstructionSink, ValType};
 
 use parser::ast;
 
@@ -11,6 +11,9 @@ fn main() -> Result<()> {
     let ast = parser::parse(&src).unwrap();
     println!("{:#?}", ast);
     let binary = compile(ast)?;
+    //for (offset, op) in binary.iter().enumerate() {
+    //    println!("{:03} {:02X}", offset, op);
+    //}
     execute_wasm(binary)?;
 
     Ok(())
@@ -48,7 +51,7 @@ fn execute_wasm(binary: Vec<u8>) -> Result<()> {
     linker.module(&mut store, "", &module)?;
     let result = linker
         .get_default(&mut store, "")?
-        .typed::<(), i64>(&store)?
+        .typed::<(), i32>(&store)?
         .call(&mut store, ())?;
     println!("Result: {:?}", result);
 
@@ -65,7 +68,7 @@ fn execute_wasm(binary: Vec<u8>) -> Result<()> {
 
     // There's a few ways we can call the `answer` `Func` value. The easiest
     // is to statically assert its signature with `typed` and then call it.
-    let answer = answer.typed::<(i64, i64), i64>(&store)?;
+    let answer = answer.typed::<(i32, i32), i32>(&store)?;
 
     // And finally we can call our function! Note that the error propagation
     // with `?` is done to handle the case where the wasm function traps.
@@ -103,12 +106,13 @@ fn compile(ast: Vec<ast::Statement>) -> Result<Vec<u8>> {
                 functions.function(type_index);
                 exports.export(&name, ExportKind::Func, type_index);
 
-                let locals = vec![];
+                let declarations: u32 = body.iter().map(collect_declarations).sum();
+                let locals = vec![(declarations, ValType::I32)];
                 let mut function = Function::new(locals);
                 let mut sink = function.instructions();
-                let locals: Vec<_> = params.into_iter().map(|p| p.name).collect();
+                let mut locals: Vec<_> = params.into_iter().map(|p| p.name).collect();
                 for statement in body {
-                    compile_statement(&mut sink, &locals, &statement)?;
+                    compile_statement(&mut sink, &mut locals, &statement)?;
                 }
                 sink.end();
                 codes.function(&function);
@@ -131,9 +135,26 @@ fn compile(ast: Vec<ast::Statement>) -> Result<Vec<u8>> {
     Ok(module.finish())
 }
 
+// TODO: hacky placeholder while we only support i32 declarations
+// This will be replaced with semantic analysis like in the previous (interpreted) version of my language:
+// https://github.com/niklaskorz/nklang/tree/master/semantics
+fn collect_declarations(statement: &ast::Statement) -> u32 {
+    match statement {
+        ast::Statement::Declaration(_, _) => 1,
+        ast::Statement::Block(body) => body.iter().map(collect_declarations).sum(),
+        ast::Statement::If(_, body, els) => body
+            .iter()
+            .map(collect_declarations)
+            .chain(els.iter().map(|body| collect_declarations(body)))
+            .sum(),
+        ast::Statement::While(_, body) => body.iter().map(collect_declarations).sum(),
+        _ => 0,
+    }
+}
+
 fn compile_statement(
     sink: &mut InstructionSink,
-    locals: &Vec<String>,
+    locals: &mut Vec<String>,
     statement: &ast::Statement,
 ) -> Result<()> {
     match statement {
@@ -143,15 +164,14 @@ fn compile_statement(
             }
         }
         ast::Statement::If(cond, body, els) => {
-            sink.if_(BlockType::Empty);
             compile_expression(sink, locals, cond)?;
+            sink.if_(BlockType::Empty);
             for statement in body {
                 compile_statement(sink, locals, statement)?;
             }
             if let Some(els) = els {
                 sink.else_();
                 compile_statement(sink, locals, els)?;
-                sink.end();
             }
             sink.end();
         }
@@ -181,6 +201,22 @@ fn compile_statement(
 
             sink.end(); // loop
             sink.end(); // block
+        }
+        ast::Statement::Declaration(name, expr) => {
+            compile_expression(sink, locals, expr)?;
+            // We allow variable shadowing, so we don't check for naming conflicts
+            let index = locals.len();
+            locals.push(name.clone());
+            sink.local_set(index.try_into().unwrap());
+        }
+        ast::Statement::Assignment(name, expr) => {
+            compile_expression(sink, locals, expr)?;
+            // We allow variable shadowing, so lookup from the back
+            let index = locals
+                .iter()
+                .rposition(|l| l == name)
+                .expect(&format!("unknown variable {}", name));
+            sink.local_set(index.try_into().unwrap());
         }
         ast::Statement::Return(expr) => {
             if let Some(expr) = expr {
@@ -224,20 +260,18 @@ fn compile_expression(
 ) -> Result<()> {
     match expr {
         ast::Expr::Ident(name) => {
-            sink.local_get(
-                locals
-                    .iter()
-                    .position(|l| l == name)
-                    .expect(&format!("unknown variable {}", name))
-                    .try_into()
-                    .unwrap(),
-            );
+            // We allow variable shadowing, so lookup from the back
+            let index = locals
+                .iter()
+                .rposition(|l| l == name)
+                .expect(&format!("unknown variable {}", name));
+            sink.local_get(index.try_into().unwrap());
         }
         &ast::Expr::Decimal(val) => {
             sink.f64_const(val.into());
         }
         &ast::Expr::Integer(val) => {
-            sink.i64_const(val);
+            sink.i32_const(val.try_into().unwrap());
         }
         &ast::Expr::Boolean(val) => {
             // Boolean operations in WASM expect an i32 argument
@@ -260,16 +294,16 @@ fn compile_expression(
             compile_expression(sink, locals, rhs)?;
             match op {
                 ast::BinaryOp::Multiply => {
-                    sink.i64_mul();
+                    sink.i32_mul();
                 }
                 ast::BinaryOp::Divide => {
-                    sink.i64_div_s();
+                    sink.i32_div_s();
                 }
                 ast::BinaryOp::Plus => {
-                    sink.i64_add();
+                    sink.i32_add();
                 }
                 ast::BinaryOp::Minus => {
-                    sink.i64_sub();
+                    sink.i32_sub();
                 }
                 ast::BinaryOp::Equal => {
                     sink.i32_eq();
@@ -299,9 +333,9 @@ fn compile_expression(
         }
         ast::Expr::PrefixOp(op, rhs) => match op {
             ast::PrefixOp::Minus => {
-                sink.i64_const(0);
+                sink.i32_const(0);
                 compile_expression(sink, locals, rhs)?;
-                sink.i64_sub();
+                sink.i32_sub();
             }
             ast::PrefixOp::Plus => {
                 compile_expression(sink, locals, rhs)?;
