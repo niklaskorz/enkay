@@ -131,13 +131,17 @@ fn compile(ast: Vec<ast::Statement>) -> Result<Vec<u8>> {
     Ok(module.finish())
 }
 
-fn compile_statement(sink: &mut InstructionSink, locals: &Vec<String>, statement: &ast::Statement) -> Result<()> {
+fn compile_statement(
+    sink: &mut InstructionSink,
+    locals: &Vec<String>,
+    statement: &ast::Statement,
+) -> Result<()> {
     match statement {
         ast::Statement::Block(body) => {
             for statement in body {
                 compile_statement(sink, locals, statement)?;
             }
-        },
+        }
         ast::Statement::If(cond, body, els) => {
             sink.if_(BlockType::Empty);
             compile_expression(sink, locals, cond)?;
@@ -150,12 +154,60 @@ fn compile_statement(sink: &mut InstructionSink, locals: &Vec<String>, statement
                 sink.end();
             }
             sink.end();
-        },
+        }
+        ast::Statement::While(cond, body) => {
+            // break target
+            sink.block(BlockType::Empty);
+            // continue target
+            sink.loop_(BlockType::Empty);
+
+            // If the condition is false, we abort the loop by branching
+            // the block around it.
+            compile_expression(sink, locals, cond)?;
+            // negate the condition
+            sink.i32_const(1);
+            sink.i32_xor();
+            sink.br_if(1);
+
+            for statement in body {
+                compile_statement(sink, locals, statement)?;
+            }
+
+            // We branch unconditionally here as the loop condition is
+            // checked at the beginning.
+            // This way, we ensure the `continue` statement also goes through
+            // the condition.
+            sink.br(0);
+
+            sink.end(); // loop
+            sink.end(); // block
+        }
         ast::Statement::Return(expr) => {
             if let Some(expr) = expr {
                 compile_expression(sink, &locals, expr)?;
             }
             sink.return_();
+        }
+        ast::Statement::Continue => {
+            // Continuing a loop in WASM works through branch instructions.
+            // The branch instruction's behavior depends on the target.
+            // Branching a block continues execution after the block,
+            // while branching a loop goes back to the start of the loop.
+            // The br parameter defines how many levels to go upwards, where
+            // each loop/block along the way is one level.
+            // TODO: needs the distance to the nearest loop
+            let loop_dist = 0;
+            sink.br(loop_dist);
+        }
+        ast::Statement::Break => {
+            // TODO: needs the distance the nearest block
+            let block_dist = 1;
+            sink.br(block_dist);
+        }
+        ast::Statement::Expr(expr) => {
+            compile_expression(sink, locals, expr)?;
+            // TODO: only drop if the expression type isn't void
+            // sink.drop();
         }
         stmt => {
             bail!("unexpected block-level statement {:?}", stmt);
@@ -165,7 +217,11 @@ fn compile_statement(sink: &mut InstructionSink, locals: &Vec<String>, statement
     Ok(())
 }
 
-fn compile_expression(sink: &mut InstructionSink, locals: &Vec<String>, expr: &ast::Expr) -> Result<()> {
+fn compile_expression(
+    sink: &mut InstructionSink,
+    locals: &Vec<String>,
+    expr: &ast::Expr,
+) -> Result<()> {
     match expr {
         ast::Expr::Ident(name) => {
             sink.local_get(
@@ -195,7 +251,7 @@ fn compile_expression(sink: &mut InstructionSink, locals: &Vec<String>, expr: &a
             // TODO: no array repr yet
             sink.i32_const(val.len().try_into().unwrap());
         }
-        ast::Expr::Function { params, .. }=> {
+        ast::Expr::Function { params, .. } => {
             // TODO: no anonymous functions yet
             sink.i32_const(params.len().try_into().unwrap());
         }
