@@ -14,6 +14,7 @@ fn main() -> Result<()> {
     //for (offset, op) in binary.iter().enumerate() {
     //    println!("{:03} {:02X}", offset, op);
     //}
+    std::fs::write("out.wasm", &binary)?;
     execute_wasm(binary)?;
 
     Ok(())
